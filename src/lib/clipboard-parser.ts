@@ -84,12 +84,8 @@ export const parseClipboardHtml = async (html: string, files?: FileList): Promis
                                     console.error("[ClipboardParser] Failed to convert image", e);
                                 }
                             } else if (src.startsWith('file:') || src === '') {
-                                console.log('[ClipboardParser] No local file match needed or no files available. src starts with:', src.substring(0, 20), 'fileIndex:', fileIndex, 'total images:', imageFiles.length);
-
-                                finalSrc = '';
-
-                                html += `<button class="image-placeholder-btn" style="display:inline-block; border:1px dashed #ccc; padding:6px 12px; font-size:12px; color:#555; background:#f5f5f5; cursor:pointer; pointer-events:auto; border-radius:4px;">Upload Image</button>`;
-
+                                
+                                console.log('[ClipboardParser] Skipping local image that cannot be loaded. src:', src.substring(0, 50));
                                 continue;
                             }
 

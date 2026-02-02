@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { TableModel, Cell, Row } from '../types/table';
 
 
@@ -62,17 +63,17 @@ const createEmptyCell = (isHeader = false): Cell => ({
 const createEmptyRow = (colCount: number, isHeader = false): Row => ({
     id: generateId(),
     cells: Array.from({ length: colCount }, () => createEmptyCell(isHeader)),
-    height: 'auto',
+    height: '40px',
 });
 
 
 const initialTable: TableModel = {
     rows: Array.from({ length: 3 }, () => createEmptyRow(3)),
-    columnWidths: Array(3).fill(150),
+    columnWidths: Array(3).fill(200),
     borderRadius: 0,
 };
 
-export const useTableStore = create<TableState>((set) => ({
+export const useTableStore = create<TableState>()(persist((set) => ({
   table: initialTable,
   selectedCellId: null,
   selectionRange: null,
@@ -623,8 +624,12 @@ export const useTableStore = create<TableState>((set) => ({
       const range = state.selectionRange;
       if (!range) return state;
 
-
-      const { startRow, startCol, endRow, endCol } = range;
+      
+      const startRow = Math.min(range.startRow, range.endRow);
+      const endRow = Math.max(range.startRow, range.endRow);
+      const startCol = Math.min(range.startCol, range.endCol);
+      const endCol = Math.max(range.startCol, range.endCol);
+      
       const rowSpan = endRow - startRow + 1;
       const colSpan = endCol - startCol + 1;
       if (rowSpan === 1 && colSpan === 1) return state;
@@ -646,8 +651,20 @@ export const useTableStore = create<TableState>((set) => ({
       };
       
 
+      
+      const contents: string[] = [];
+      for (let r = startRow; r <= endRow; r++) {
+          for (let c = startCol; c <= endCol; c++) {
+              const cell = state.table.rows[r].cells[c];
+              if (cell && cell.content && cell.content.trim()) {
+                  contents.push(cell.content);
+              }
+          }
+      }
+
       newRows[startRow].cells[startCol] = {
           ...originCell,
+          content: contents.join(' '),
           rowSpan,
           colSpan
       };
@@ -827,96 +844,143 @@ export const useTableStore = create<TableState>((set) => ({
           }
 
       } else {
+          
 
+          
+          const cellsToProcess: { r: number, c: number, cell: Cell }[] = [];
+          const processedIds = new Set<string>();
 
-          const uniqueRows = Array.from(new Set(targets.map(t => t.r))).sort((a,b) => b - a);
-          const colCount = newWidths.length;
+          for (const t of targets) {
+             const cell = newRows[t.r].cells[t.c];
 
-          for (const targetR of uniqueRows) {
-              const added = count - 1;
-              
-              const templateRows: Row[] = [];
-              for (let k = 0; k < added; k++) {
-                  templateRows.push({
-                      id: generateId(),
-                      cells: Array.from({ length: colCount }).map(() => null),
-                      height: 'auto'
-                  });
-              }
+             
+             if (cell && !processedIds.has(cell.id)) {
+                 cellsToProcess.push({ r: t.r, c: t.c, cell });
+                 processedIds.add(cell.id);
+             }
+          }
 
+          
+          
+          const canOptimize = cellsToProcess.length > 0 && cellsToProcess.every(item => {
+              const span = item.cell.rowSpan || 1;
+              return span >= count && span % count === 0;
+          });
 
-              for (let c = 0; c < colCount; c++) {
-                   const isTarget = targets.some(t => t.r === targetR && t.c === c);
-                   const targetCell = newRows[targetR].cells[c];
-
-                   if (isTarget) {
-
-
-                       if (targetCell) {
-                            const originalSpan = targetCell.rowSpan || 1;
-                            for (let k = 0; k < added; k++) {
-                                const newC = createEmptyCell(false);
-                                if (targetCell.backgroundColor) newC.backgroundColor = targetCell.backgroundColor;
-                                if (targetCell.colSpan && targetCell.colSpan > 1) newC.colSpan = targetCell.colSpan;
-                                
-
-                                if (k === added - 1 && originalSpan > 1) {
-                                  newC.rowSpan = originalSpan;
-                                }
-
-
-                                templateRows[k].cells[c] = newC;
-                            }
-                           
-
-                           newRows[targetR].cells[c] = {
-                               ...targetCell,
-                               rowSpan: 1
-                           };
-                       } else {
-
-
-                       }
-                   } else {
-
-                       if (targetCell) {
-                           newRows[targetR].cells[c] = {
-                               ...targetCell,
-                               rowSpan: (targetCell.rowSpan || 1) + added
-                           };
-                       }
-
+          if (canOptimize) {
+               
+               for (const item of cellsToProcess) {
+                   const { r, c, cell } = item;
+                   const originalSpan = cell.rowSpan || 1;
+                   const newSpan = originalSpan / count;
+                   
+                   
+                   newRows[r].cells[c] = { ...cell, rowSpan: newSpan };
+                   
+                   
+                   for (let k = 1; k < count; k++) {
+                       const targetRowIdx = r + (newSpan * k);
+                       
+                       const newCell = createEmptyCell(cell.isHeader);
+                       newCell.backgroundColor = cell.backgroundColor;
+                       newCell.colSpan = cell.colSpan;
+                       if (newSpan > 1) newCell.rowSpan = newSpan;
+                       
+                       
+                       newRows[targetRowIdx].cells[c] = newCell;
                    }
-              }
+               }
+          } else {
               
+              const uniqueRows = Array.from(new Set(targets.map(t => t.r))).sort((a,b) => b - a);
+              const colCount = newWidths.length;
+
+              for (const targetR of uniqueRows) {
+                  const added = count - 1;
+                  
+                  
+                  const originalHeightStr = newRows[targetR].height;
+                  let originalHeight: number;
+                  if (typeof originalHeightStr === 'number') {
+                      originalHeight = originalHeightStr;
+                  } else if (typeof originalHeightStr === 'string' && originalHeightStr !== 'auto') {
+                      originalHeight = parseInt(originalHeightStr) || 40;
+                  } else {
+                      originalHeight = 40;
+                  }
+                  
+                  
+                  const newRowHeight = Math.max(10, Math.floor(originalHeight / count));
+                  
+                  
+                  newRows[targetR].height = `${newRowHeight}px`;
+                  
+                  const templateRows: Row[] = [];
+                  for (let k = 0; k < added; k++) {
+                      templateRows.push({
+                          id: generateId(),
+                          cells: Array.from({ length: colCount }).map(() => null),
+                          height: `${newRowHeight}px`
+                      });
+                  }
 
 
-              for (let r = 0; r < targetR; r++) { 
-                   const row = newRows[r];
-                   for (let c = 0; c < colCount; c++) {
-                       const cell = row.cells[c];
-                       if (cell) {
-                           const rSpan = cell.rowSpan || 1;
-                           if (r + rSpan - 1 >= targetR) {
+                  for (let c = 0; c < colCount; c++) {
+                       const isTarget = targets.some(t => t.r === targetR && t.c === c);
+                       const targetCell = newRows[targetR].cells[c];
 
+                       if (isTarget) {
+                           if (targetCell) {
+                                const originalSpan = targetCell.rowSpan || 1;
+                                for (let k = 0; k < added; k++) {
+                                    const newC = createEmptyCell(false);
+                                    if (targetCell.backgroundColor) newC.backgroundColor = targetCell.backgroundColor;
+                                    if (targetCell.colSpan && targetCell.colSpan > 1) newC.colSpan = targetCell.colSpan;
+                                    
+                                    if (k === added - 1 && originalSpan > 1) {
+                                      newC.rowSpan = originalSpan;
+                                    }
 
-                               newRows[r].cells[c] = {
-                                   ...cell,
-                                   rowSpan: rSpan + added
+                                    templateRows[k].cells[c] = newC;
+                                }
+                               
+                               newRows[targetR].cells[c] = {
+                                   ...targetCell,
+                                   rowSpan: 1
+                               };
+                           }
+                       } else {
+                           if (targetCell) {
+                               newRows[targetR].cells[c] = {
+                                   ...targetCell,
+                                   rowSpan: (targetCell.rowSpan || 1) + added
                                };
                            }
                        }
-                   }
+                  }
+                  
+                  for (let r = 0; r < targetR; r++) { 
+                       const row = newRows[r];
+                       for (let c = 0; c < colCount; c++) {
+                           const cell = row.cells[c];
+                           if (cell) {
+                               const rSpan = cell.rowSpan || 1;
+                               if (r + rSpan - 1 >= targetR) {
+                                   newRows[r].cells[c] = {
+                                       ...cell,
+                                       rowSpan: rSpan + added
+                                   };
+                               }
+                           }
+                       }
+                  }
+
+                  newRows.splice(targetR + 1, 0, ...templateRows);
               }
-
-
-              newRows.splice(targetR + 1, 0, ...templateRows);
-              
-              console.log('[VerticalSplit] Result Row:', targetR + 1, templateRows[0]);
-              console.log('[VerticalSplit] Original Row:', targetR, newRows[targetR]);
           }
-      }
 
+      }
+      
       return { 
           table: { ...tableClone, rows: newRows, columnWidths: newWidths },
           history: newHistory
@@ -1035,4 +1099,7 @@ export const useTableStore = create<TableState>((set) => ({
   setBorderRadius: (radius) => set((state) => ({
       table: { ...state.table, borderRadius: radius }
   })),
+}), {
+    name: 'tabular-storage',
+    partialize: (state) => ({ table: state.table, history: state.history }),
 }));
