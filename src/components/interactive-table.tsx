@@ -82,7 +82,8 @@ const EditableCell: React.FC<EditableCellProps> = ({ initialContent, className, 
             onBlur={handleBlur}
             onKeyDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()} 
+            onDoubleClick={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()} 
             onPaste={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
@@ -428,7 +429,7 @@ export function InteractiveTable() {
   };
 
 
-  const handleDoubleClick = (cellId: string) => {
+  const handleCellClick = (cellId: string) => {
       const cell = table.rows.flatMap(r => r.cells).find(c => c?.id === cellId);
       if (cell) {
           editingContentRef.current = cell.content;
@@ -988,7 +989,7 @@ export function InteractiveTable() {
                                             }}
                                             onMouseDown={() => handleMouseDown(cell.id)}
                                             onMouseEnter={() => handleMouseEnter(cell.id)}
-                                            onDoubleClick={() => handleDoubleClick(cell.id)}
+                                            onClick={() => handleCellClick(cell.id)}
                                         >
                                             {editingCell === cell.id ? (
                                                 <div className="w-full relative overflow-hidden">
