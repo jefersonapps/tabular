@@ -66,7 +66,10 @@ const EditableCell: React.FC<EditableCellProps> = ({ initialContent, className, 
     };
 
     const handleBlur = () => {
-        if (contentRef.current !== initialContent) {
+        const trimmedCurrent = contentRef.current.trim();
+        const trimmedInitial = initialContent.trim();
+        
+        if (trimmedCurrent !== trimmedInitial) {
             onSave(contentRef.current);
         }
         onBlur();
@@ -77,7 +80,7 @@ const EditableCell: React.FC<EditableCellProps> = ({ initialContent, className, 
             ref={ref}
             contentEditable
             suppressContentEditableWarning
-            className={`${className} outline-none cursor-text min-h-[1.5em]`}
+            className={`${className} outline-none cursor-text min-h-[1.2em]`}
             onInput={handleInput}
             onBlur={handleBlur}
             onKeyDown={(e) => e.stopPropagation()}
@@ -398,19 +401,9 @@ export function InteractiveTable() {
   const processHtmlWithLatex = (html: string) => {
       if (!html || !html.includes('$')) return html;
 
-      
-      
-      return html.replace(/\$([^$]+?)\$/g, (match, inner) => {
-           
-           if (inner.includes('="')) return match;
-           
-           
-           let cleanTex = inner.replace(/<[^>]+>/g, '');
-           
-           
-           cleanTex = cleanTex.replace(/\u00A0/g, ' ');
-           
-           
+      // Handle display mode math $$...$$
+      let processed = html.replace(/\$\$(.+?)\$\$/g, (match, inner) => {
+           let cleanTex = inner.replace(/<[^>]+>/g, '').replace(/\u00A0/g, ' ');
            const txt = document.createElement('textarea');
            txt.innerHTML = cleanTex;
            cleanTex = txt.value;
@@ -418,9 +411,36 @@ export function InteractiveTable() {
            try {
                const rendered = katex.renderToString(cleanTex, { 
                    throwOnError: false,
+                   displayMode: true
+               });
+               return `<div class="latex-display-container my-2 text-center overflow-visible">${rendered}</div>`;
+           } catch (e) {
+               return match;
+           }
+      });
+
+      // Handle inline math $...$
+      return processed.replace(/\$([^$]+?)\$/g, (match, inner) => {
+           if (inner.includes('="')) return match;
+           
+           let cleanTex = inner.replace(/<[^>]+>/g, '').replace(/\u00A0/g, ' ');
+           const txt = document.createElement('textarea');
+           txt.innerHTML = cleanTex;
+           cleanTex = txt.value;
+
+           try {
+               const isDisplayStyle = cleanTex.includes('\\displaystyle');
+               const rendered = katex.renderToString(cleanTex, { 
+                   throwOnError: false,
                    displayMode: false
                });
-                return `<span class="latex-container inline-block mx-0.5" style="font-size: 0.9em; vertical-align: middle;">${rendered}</span>`;
+               
+               // If it's displaystyle, we use inline-flex with extra vertical room
+               const style = isDisplayStyle 
+                ? "display: inline-flex; align-items: center; padding: 0.8em 0; line-height: 1; overflow: visible;"
+                : "display: inline-block; vertical-align: middle; line-height: 1; overflow: visible;";
+
+               return `<span class="latex-container mx-0.5" style="${style}">${rendered}</span>`;
            } catch (e) {
                console.error("KaTeX render error:", e);
                return match;
@@ -937,12 +957,12 @@ export function InteractiveTable() {
             
             <div 
                 id="interactive-table-container"
-                className="relative inline-flex flex-col items-start mx-auto leading-none text-[0px]"
+                className="relative inline-flex flex-col items-start mx-auto"
                 style={{
                     borderRadius: (table.borderRadius || 0) + 'px',
                     overflow: 'hidden',
                     fontFamily: '"Computer Modern", serif',
-                    border: '1px solid black'
+                    border: 'none'
                 }}
             >
                 {}
@@ -953,7 +973,9 @@ export function InteractiveTable() {
                     className="border-collapse table-fixed bg-white text-base"
                     style={{ 
                         width: 'max-content',
-                        borderStyle: 'hidden'
+                        borderStyle: 'solid',
+                        borderWidth: '1px',
+                        borderColor: 'black'
                     }}
                 >
                     <colgroup>
@@ -992,25 +1014,25 @@ export function InteractiveTable() {
                                             onClick={() => handleCellClick(cell.id)}
                                         >
                                             {editingCell === cell.id ? (
-                                                <div className="w-full relative overflow-hidden">
+                                                <div className="w-full flex flex-col justify-center relative" style={{ minHeight: row.height || MIN_ROW_HEIGHT }}>
                                                     <EditableCell
                                                         initialContent={cell.content}
                                                         className={cn(
-                                                            "w-full px-2 py-1 wrap-break-word whitespace-normal outline-none",
+                                                            "w-full px-2 wrap-break-word whitespace-normal outline-none leading-normal",
                                                             cell.align === 'center' && "text-center",
                                                             cell.align === 'right' && "text-right",
                                                             cell.bold && "font-bold",
                                                             cell.italic && "italic"
                                                         )}
                                                         onSave={(newContent) => updateCell(cell.id, { content: newContent })}
-                                                        onBlur={() => setEditingCell(null)}
+                                                        onBlur={() => setEditingCell(prev => prev === cell.id ? null : prev)}
                                                     />
                                                 </div>
                                             ) : (
-                                                <div className="w-full relative overflow-hidden">
+                                                <div className="w-full flex flex-col justify-center relative" style={{ minHeight: row.height || MIN_ROW_HEIGHT }}>
                                                     <div 
                                                         className={cn(
-                                                            "w-full px-2 py-1 wrap-break-word whitespace-normal pointer-events-none",
+                                                            "w-full px-2 wrap-break-word whitespace-normal pointer-events-none leading-normal",
                                                             cell.align === 'center' && "text-center",
                                                             cell.align === 'right' && "text-right",
                                                             cell.bold && "font-bold",

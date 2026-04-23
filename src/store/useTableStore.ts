@@ -310,7 +310,7 @@ export const useTableStore = create<TableState>()(persist((set) => ({
     const newRow = {
         id: generateId(),
         cells: newRowCells,
-        height: 'auto'
+        height: '40px'
     };
 
 

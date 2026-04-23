@@ -154,84 +154,70 @@
 @media print {
   @page {
     size: auto;
-    margin: 0mm;
+    margin: 5mm;
   }
 
   body {
-    background-color: white;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    background-color: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  /* Hide everything by default */
-  body > * {
-    display: none !important;
-  }
-
-  /* Only show the app root (if needed) or directly target the table specific containers */
-  /* Assuming the app structure, we usually need to keep parents visible but hide siblings */
-  /* But a better strategy is to hide all UI elements explicitly and make the table container fixed/absolute */
-
-  :root, body, html, #root {
-    display: block !important;
-    height: auto !important;
-    width: auto !important;
-    overflow: visible !important;
-    position: static !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  /* Hide specific UI components */
   header, 
-  nav,
+  nav, 
+  footer,
   button,
-  .border-b, /* Toolbar likely has this class */
-  .z-50, /* Modal overlays */
+  .no-print,
+  [role="toolbar"],
+  .flex-none.border-b,
   input[type="range"],
   .cursor-col-resize,
   .cursor-row-resize,
-  [data-html2canvas-ignore], /* TeX labels */
-  .lucide, /* Icons */
-  .fixed,
-  .absolute /* Hide resize handles */
+  .absolute.opacity-0.hover\:opacity-100
   {
-      display: none !important;
+    display: none !important;
   }
 
-  /* But we need to ensure THE table container is visible and its children */
-  #interactive-table-container {
-    display: block !important;
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: auto !important; /* Allow it to take its natural size */
+  #root, 
+  body, 
+  html {
+    background: white !important;
     height: auto !important;
-    margin: 0 !important;
-    padding: 0px !important; 
-    border: 1px solid black !important; /* Restore outer border */
-    transform: none !important;
+    width: auto !important;
     overflow: visible !important;
+    display: block !important;
   }
 
-  #interactive-table-container * {
-    visibility: visible !important;
+  .flex-1.overflow-auto.bg-gray-100 {
+    background: white !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    display: block !important;
   }
 
-  /* Specifically force the table to show */
+  #interactive-table-container {
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    position: relative !important;
+    display: inline-block !important;
+    overflow: visible !important;
+    border-radius: var(--print-radius, 0px) !important;
+  }
+
   table {
-    display: table !important;
-    width: max-content !important; /* Do not stretch */
+    width: max-content !important;
     border-collapse: collapse !important;
-    border-style: hidden !important; /* Let cells handle borders to avoid double lines with container */
+    table-layout: fixed !important;
+    page-break-inside: avoid;
+    border: none !important;
   }
 
   td, th {
-     border: 1px solid black !important;
+    border: 1px solid black !important;
+    background-color: transparent;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-
-  /* Hide empty cells or utility divs */
-  .hidden-print {
-      display: none !important;
-  }
-}
+}
