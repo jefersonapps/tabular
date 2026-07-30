@@ -2,6 +2,13 @@ export type Alignment = 'left' | 'center' | 'right';
 
 export type VerticalAlignment = 'top' | 'middle' | 'bottom';
 
+export type GradientDirection = 'horizontal' | 'vertical';
+
+export interface GradientFill {
+  colors: string[];
+  direction: GradientDirection;
+}
+
 export interface Cell {
   id: string;
   content: string;
@@ -13,6 +20,7 @@ export interface Cell {
   bold?: boolean;
   italic?: boolean;
   backgroundColor?: string;
+  backgroundGradient?: GradientFill;
 }
 
 export interface Row {

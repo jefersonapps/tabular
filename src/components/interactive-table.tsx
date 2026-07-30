@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useTableStore } from "@/store/useTableStore";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Bold, Italic, AlignLeft, AlignCenter, AlignRight, Trash2, PaintBucket, RotateCcw, RotateCw, ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, AlignStartVertical, AlignCenterVertical, AlignEndVertical } from "lucide-react";
+import { Bold, Italic, AlignLeft, AlignCenter, AlignRight, Trash2, PaintBucket, RotateCcw, RotateCw, ArrowUpToLine, ArrowDownToLine, ArrowLeftToLine, ArrowRightToLine, AlignStartVertical, AlignCenterVertical, AlignEndVertical, Minus, Plus } from "lucide-react";
+import type { GradientDirection } from "@/types/table";
 import { SplitCellDialog } from "@/components/split-cells-dialog";
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
@@ -141,7 +142,11 @@ export function InteractiveTable() {
 
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [isSplitDialogOpen, setIsSplitDialogOpen] = useState(false);
+  const [gradientColors, setGradientColors] = useState(['#4F81BD', '#DBE5F1']);
+  const [gradientDirection, setGradientDirection] = useState<GradientDirection>('horizontal');
   const colorPickerRef = useRef<HTMLDivElement>(null);
+  const colorPickerButtonRef = useRef<HTMLButtonElement>(null);
+  const [colorPickerPosition, setColorPickerPosition] = useState({ top: 0, left: 0 });
   
   useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
@@ -159,8 +164,27 @@ export function InteractiveTable() {
   }, [isColorPickerOpen]);
 
   const handleColorSelect = (color: string | undefined) => {
-      updateSelection({ backgroundColor: color });
+      updateSelection({ backgroundColor: color, backgroundGradient: undefined });
       setIsColorPickerOpen(false);
+  };
+
+  const handleGradientApply = () => {
+      updateSelection({
+          backgroundColor: undefined,
+          backgroundGradient: { colors: gradientColors, direction: gradientDirection }
+      });
+      setIsColorPickerOpen(false);
+  };
+
+  const toggleColorPicker = () => {
+      if (!isColorPickerOpen && colorPickerButtonRef.current) {
+          const rect = colorPickerButtonRef.current.getBoundingClientRect();
+          setColorPickerPosition({
+              top: rect.bottom + 8,
+              left: Math.max(12, Math.min(rect.left, window.innerWidth - 292))
+          });
+      }
+      setIsColorPickerOpen((open) => !open);
   };
   
   const handlePaste = React.useCallback(async (e: React.ClipboardEvent) => {
@@ -778,8 +802,8 @@ export function InteractiveTable() {
         autoFocus
     >
         {}
-        <div ref={toolbarRef} className="h-12 md:h-12 border-b flex items-center justify-between px-4 bg-gray-50 flex-none relative z-50">
-             <div className="flex items-center gap-1 flex-none">
+        <div ref={toolbarRef} className="border-b bg-gray-50 flex-none relative z-50 overflow-x-auto">
+              <div className="flex h-12 w-max min-w-full items-center gap-1 px-3 sm:px-4">
                  <Button variant="ghost" size="icon" onClick={() => undo()} disabled={history.past.length === 0} title="Desfazer (Ctrl+Z)"><RotateCcw className="w-4 h-4" /></Button>
                  <Button variant="ghost" size="icon" onClick={() => redo()} disabled={history.future.length === 0} title="Refazer (Ctrl+Y)"><RotateCw className="w-4 h-4" /></Button>
                  <div className="w-px h-6 bg-gray-300 mx-2" />
@@ -874,19 +898,23 @@ export function InteractiveTable() {
                  <div className="w-px h-6 bg-gray-300 mx-2" />
                  
                  {}
-                 <div className="relative">
-                     <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={() => setIsColorPickerOpen(!isColorPickerOpen)} 
+                  <div ref={colorPickerRef} className="relative">
+                      <Button 
+                         ref={colorPickerButtonRef}
+                         variant="ghost" 
+                         size="icon" 
+                         onClick={toggleColorPicker}
                         disabled={!selectedCellId}
                         title="Cor de Fundo"
                      >
                          <PaintBucket className="w-4 h-4" />
                      </Button>
                      {isColorPickerOpen && (
-                         <div ref={colorPickerRef} className="absolute top-full left-0 mt-2 bg-white border shadow-lg rounded-lg p-2 z-50 w-[240px]">
-                             <div className="grid grid-cols-10 gap-1">
+                          <div
+                              className="fixed bg-white border shadow-lg rounded-lg p-3 z-[60] w-[min(280px,calc(100vw-1.5rem))]"
+                              style={{ top: colorPickerPosition.top, left: colorPickerPosition.left }}
+                          >
+                              <div className="grid grid-cols-10 gap-1">
                                  {}
                                  <button 
                                      className="col-span-10 text-xs text-left px-2 py-1 hover:bg-gray-100 rounded mb-2 border border-dashed border-gray-300"
@@ -903,9 +931,43 @@ export function InteractiveTable() {
                                          onClick={() => handleColorSelect(color)}
                                          title={color}
                                      />
-                                 ))}
-                             </div>
-                         </div>
+                                  ))}
+                              </div>
+                              <div className="mt-3 border-t pt-3">
+                                  <div className="mb-2 flex items-center justify-between">
+                                      <span className="text-xs font-medium text-gray-700">Gradiente</span>
+                                      <span className="text-xs text-gray-500">até 3 cores</span>
+                                  </div>
+                                  <div className="mb-3 flex items-center gap-2">
+                                      {gradientColors.map((color, index) => (
+                                          <label key={index} className="relative size-8 overflow-hidden rounded-md border border-gray-300" style={{ backgroundColor: color }} title={`Cor ${index + 1}`}>
+                                              <input
+                                                  type="color"
+                                                  value={color}
+                                                  onChange={(event) => setGradientColors((colors) => colors.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
+                                                  className="absolute inset-0 size-full cursor-pointer opacity-0"
+                                              />
+                                          </label>
+                                      ))}
+                                      {gradientColors.length < 3 && (
+                                          <Button variant="outline" size="icon-sm" onClick={() => setGradientColors((colors) => [...colors, '#FFFFFF'])} title="Adicionar cor">
+                                              <Plus className="size-4" />
+                                          </Button>
+                                      )}
+                                      {gradientColors.length > 2 && (
+                                          <Button variant="ghost" size="icon-sm" onClick={() => setGradientColors((colors) => colors.slice(0, -1))} title="Remover cor">
+                                              <Minus className="size-4" />
+                                          </Button>
+                                      )}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                      <Button variant={gradientDirection === 'horizontal' ? 'secondary' : 'outline'} size="sm" onClick={() => setGradientDirection('horizontal')}>Horizontal</Button>
+                                      <Button variant={gradientDirection === 'vertical' ? 'secondary' : 'outline'} size="sm" onClick={() => setGradientDirection('vertical')}>Vertical</Button>
+                                  </div>
+                                  <div className="my-3 h-8 rounded-md border" style={{ backgroundImage: `linear-gradient(${gradientDirection === 'horizontal' ? 'to right' : 'to bottom'}, ${gradientColors.join(', ')})` }} />
+                                  <Button size="sm" className="w-full" onClick={handleGradientApply}>Aplicar gradiente</Button>
+                              </div>
+                          </div>
                      )}
                  </div>
                  
@@ -1005,7 +1067,10 @@ export function InteractiveTable() {
                                                 isSelected && "z-10"
                                             )}
                                             style={{ 
-                                                backgroundColor: isSelected ? '#eff6ff' : (cell.backgroundColor || undefined),
+                                                 backgroundColor: isSelected ? '#eff6ff' : (cell.backgroundColor || undefined),
+                                                 backgroundImage: !isSelected && cell.backgroundGradient
+                                                    ? `linear-gradient(${cell.backgroundGradient.direction === 'horizontal' ? 'to right' : 'to bottom'}, ${cell.backgroundGradient.colors.join(', ')})`
+                                                    : undefined,
                                                 minWidth: table.columnWidths[colIndex],
                                                 height: row.height
                                             }}

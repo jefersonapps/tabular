@@ -1,11 +1,13 @@
-import { FileSpreadsheet, Download } from "lucide-react";
+import { FilePlus2, FileSpreadsheet, Download, History, Table2 } from "lucide-react";
+import { useState } from "react";
 import { Button } from "./ui/button";
 import { useTableStore } from "@/store/useTableStore";
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 
 export function Header() {
-  const { setSelectedCell, setSelectionRange } = useTableStore();
+  const { setSelectedCell, setSelectionRange, recentTables, createNewTable, restoreRecentTable } = useTableStore();
+  const [isRecentOpen, setIsRecentOpen] = useState(false);
   
   const handleDownloadPDF = async () => {
     // Clear selection for a clean capture
@@ -100,7 +102,7 @@ export function Header() {
   };
 
   return (
-    <header className="h-14 border-b px-4 flex items-center justify-between bg-card">
+    <header className="min-h-14 border-b px-3 py-2 sm:px-4 flex items-center justify-between gap-3 bg-card">
         <div className="flex items-center gap-2">
             <div className="p-2 bg-primary/10 rounded-md">
                 <FileSpreadsheet className="w-5 h-5 text-primary" />
@@ -108,11 +110,45 @@ export function Header() {
             <h1 className="font-semibold text-lg">Tabular</h1>
         </div>
         
-        <div className="flex items-center gap-2">
-             <Button size="sm" onClick={handleDownloadPDF} className="gap-2 bg-black text-white hover:bg-gray-800">
-                 <Download className="w-4 h-4" />
-                 Exportar PDF
+        <div className="flex items-center gap-1.5 sm:gap-2">
+             <Button size="sm" variant="outline" onClick={createNewTable} className="gap-2">
+                  <FilePlus2 className="w-4 h-4" />
+                  <span className="hidden sm:inline">Nova tabela</span>
              </Button>
+             <div className="relative">
+                 <Button size="sm" variant="outline" onClick={() => setIsRecentOpen((open) => !open)} className="gap-2" aria-expanded={isRecentOpen}>
+                    <History className="w-4 h-4" />
+                    <span className="hidden sm:inline">Recentes</span>
+                 </Button>
+                 {isRecentOpen && (
+                    <div className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-1.5rem))] rounded-lg border bg-popover p-2 shadow-lg">
+                       <div className="px-2 py-1.5 text-sm font-semibold">Últimas tabelas</div>
+                       {recentTables.length === 0 ? (
+                         <p className="px-2 py-4 text-sm text-muted-foreground">Nenhuma tabela anterior.</p>
+                       ) : (
+                         <div className="max-h-72 overflow-y-auto">
+                           {recentTables.map((recent) => (
+                             <button
+                               key={recent.id}
+                               onClick={() => { restoreRecentTable(recent.id); setIsRecentOpen(false); }}
+                               className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-accent"
+                             >
+                               <Table2 className="size-4 shrink-0 text-muted-foreground" />
+                               <span className="min-w-0 flex-1">
+                                 <span className="block truncate text-sm font-medium">{recent.table.rows.length} linhas × {recent.table.columnWidths.length} colunas</span>
+                                 <span className="block text-xs text-muted-foreground">{new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(recent.createdAt))}</span>
+                               </span>
+                             </button>
+                           ))}
+                         </div>
+                       )}
+                    </div>
+                 )}
+             </div>
+              <Button size="sm" onClick={handleDownloadPDF} className="gap-2 bg-black text-white hover:bg-gray-800">
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Exportar PDF</span>
+              </Button>
         </div>
     </header>
   );

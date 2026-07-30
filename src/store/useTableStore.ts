@@ -14,6 +14,7 @@ export interface Range {
 
 export interface TableState {
   table: TableModel;
+  recentTables: RecentTable[];
   selectedCellId: string | null;
   selectionRange: Range | null;
   
@@ -41,6 +42,8 @@ export interface TableState {
   setSelectedCell: (cellId: string | null) => void;
   setCaption: (caption: string) => void;
   setBorderRadius: (radius: number) => void;
+  createNewTable: () => void;
+  restoreRecentTable: (id: string) => void;
   
 
   history: {
@@ -50,6 +53,12 @@ export interface TableState {
   undo: () => void;
   redo: () => void;
   saveHistory: () => void;
+}
+
+export interface RecentTable {
+  id: string;
+  createdAt: string;
+  table: TableModel;
 }
 
 const createEmptyCell = (isHeader = false): Cell => ({
@@ -67,14 +76,19 @@ const createEmptyRow = (colCount: number, isHeader = false): Row => ({
 });
 
 
-const initialTable: TableModel = {
+const createInitialTable = (): TableModel => ({
     rows: Array.from({ length: 3 }, () => createEmptyRow(3)),
     columnWidths: Array(3).fill(200),
     borderRadius: 0,
-};
+});
+
+const initialTable = createInitialTable();
+
+const cloneTable = (table: TableModel): TableModel => JSON.parse(JSON.stringify(table));
 
 export const useTableStore = create<TableState>()(persist((set) => ({
   table: initialTable,
+  recentTables: [],
   selectedCellId: null,
   selectionRange: null,
 
@@ -1099,7 +1113,32 @@ export const useTableStore = create<TableState>()(persist((set) => ({
   setBorderRadius: (radius) => set((state) => ({
       table: { ...state.table, borderRadius: radius }
   })),
+  createNewTable: () => set((state) => ({
+      table: createInitialTable(),
+      selectedCellId: null,
+      selectionRange: null,
+      history: { past: [], future: [] },
+      recentTables: [
+          { id: generateId(), createdAt: new Date().toISOString(), table: cloneTable(state.table) },
+          ...state.recentTables
+      ].slice(0, 8)
+  })),
+  restoreRecentTable: (id) => set((state) => {
+      const recent = state.recentTables.find((item) => item.id === id);
+      if (!recent) return state;
+
+      return {
+          table: cloneTable(recent.table),
+          selectedCellId: null,
+          selectionRange: null,
+          history: { past: [], future: [] },
+          recentTables: [
+              { id: generateId(), createdAt: new Date().toISOString(), table: cloneTable(state.table) },
+              ...state.recentTables.filter((item) => item.id !== id)
+          ].slice(0, 8)
+      };
+  }),
 }), {
     name: 'tabular-storage',
-    partialize: (state) => ({ table: state.table, history: state.history }),
+    partialize: (state) => ({ table: state.table, history: state.history, recentTables: state.recentTables }),
 }));
