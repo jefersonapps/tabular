@@ -2,8 +2,24 @@ import { FilePlus2, FileSpreadsheet, Download, History, Table2 } from "lucide-re
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { useTableStore } from "@/store/useTableStore";
-import html2canvas from 'html2canvas-pro';
+import { domToCanvas } from 'modern-screenshot';
 import { jsPDF } from 'jspdf';
+
+const canvasHasVisibleContent = (canvas: HTMLCanvasElement) => {
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context || canvas.width === 0 || canvas.height === 0) return false;
+
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    // Sampling every eighth pixel is enough to find table borders/text while
+    // avoiding a costly comparison of every high-resolution pixel.
+    for (let index = 0; index < pixels.length; index += 4 * 8) {
+        const alpha = pixels[index + 3];
+        const isNotWhite = pixels[index] < 250 || pixels[index + 1] < 250 || pixels[index + 2] < 250;
+        if (alpha > 0 && isNotWhite) return true;
+    }
+
+    return false;
+};
 
 export function Header() {
   const { setSelectedCell, setSelectionRange, recentTables, createNewTable, restoreRecentTable } = useTableStore();
@@ -28,83 +44,41 @@ export function Header() {
     if (!container) return;
 
     try {
-        const MARGIN = 6; // Tightened margin
+        const MARGIN = 6;
         const CAPTURE_SCALE = 4;
+        const PX_TO_MM = 0.264583;
 
-        // High quality capture
-        const canvas = await html2canvas(container, {
+        // modern-screenshot embeds the fonts and computed styles used by the
+        // subtree before asking the browser to paint it. This preserves KaTeX's
+        // exact baselines instead of reconstructing text with CanvasRenderingContext2D.
+        const canvas = await domToCanvas(container, {
             scale: CAPTURE_SCALE,
-            useCORS: true,
-            logging: false,
             backgroundColor: '#ffffff',
-            onclone: async (clonedDoc) => {
-                await clonedDoc.fonts?.ready;
-
-                const clonedContainer = clonedDoc.getElementById('interactive-table-container');
-                if (clonedContainer) {
-                    clonedContainer.style.position = 'relative';
-                    clonedContainer.style.display = 'inline-block';
-                    clonedContainer.style.margin = '0';
-                    clonedContainer.style.padding = `${MARGIN}px`;
-                    clonedContainer.style.transform = 'none';
-                    clonedContainer.style.boxShadow = 'none';
-                    clonedContainer.style.border = 'none';
-                    clonedContainer.style.overflow = 'visible';
-                    clonedContainer.style.background = 'white';
-                    
-                    const table = clonedContainer.querySelector('table');
-                    if (table) {
-                        table.style.border = 'none';
-                        table.style.borderCollapse = 'separate';
-                        table.style.borderSpacing = '0';
-                        table.style.margin = '0';
-                        table.style.overflow = 'visible';
-                        
-                        table.style.borderTop = '1px solid black';
-                        table.style.borderLeft = '1px solid black';
-                        
-                        const cells = table.querySelectorAll('td, th');
-                        cells.forEach(c => {
-                            const cell = c as HTMLElement;
-                            cell.style.border = 'none';
-                            cell.style.borderRight = '1px solid black';
-                            cell.style.borderBottom = '1px solid black';
-                            cell.style.boxSizing = 'border-box';
-                            cell.style.overflow = 'visible';
-                            
-                            cell.style.display = 'table-cell';
-                            cell.style.padding = '0';
-                        });
-
-                        // html2canvas-pro measures text word by word when letter-spacing
-                        // is exactly zero. With custom fonts and flex cell contents those
-                        // word ranges can lose the width of whitespace. A negligible,
-                        // non-zero value makes it measure graphemes and preserves spaces.
-                        const cellContents = table.querySelectorAll<HTMLElement>(
-                            'td > div > div, th > div > div'
-                        );
-                        cellContents.forEach(content => {
-                            content.style.letterSpacing = '0.01px';
-                        });
-
-                        // Resize hit areas are editor UI and must not affect the clone's
-                        // bounds or overlap cell contents in the exported image.
-                        const resizeHandles = table.querySelectorAll<HTMLElement>(
-                            '.cursor-col-resize, .cursor-row-resize'
-                        );
-                        resizeHandles.forEach(handle => {
-                            handle.style.display = 'none';
-                        });
-                    }
-                }
+            filter: node => !(
+                node instanceof HTMLElement
+                && (
+                    node.classList.contains('cursor-col-resize')
+                    || node.classList.contains('cursor-row-resize')
+                )
+            ),
+            style: {
+                boxShadow: 'none'
             }
         });
 
+        if (!canvasHasVisibleContent(canvas)) {
+            throw new Error('A captura da tabela ficou vazia; o PDF não foi gerado.');
+        }
+
         const imgData = canvas.toDataURL('image/png', 1.0);
         
-        // Calculate dimensions in mm including the margin
-        const widthMm = (canvas.width / CAPTURE_SCALE) * 0.264583; 
-        const heightMm = (canvas.height / CAPTURE_SCALE) * 0.264583;
+        // Add the PDF margin outside the bitmap. Padding the cloned DOM would
+        // change its dimensions and could shift the table relative to preview.
+        const contentWidthMm = (canvas.width / CAPTURE_SCALE) * PX_TO_MM;
+        const contentHeightMm = (canvas.height / CAPTURE_SCALE) * PX_TO_MM;
+        const marginMm = MARGIN * PX_TO_MM;
+        const widthMm = contentWidthMm + (marginMm * 2);
+        const heightMm = contentHeightMm + (marginMm * 2);
 
         const pdf = new jsPDF({
             orientation: widthMm > heightMm ? 'landscape' : 'portrait',
@@ -112,7 +86,7 @@ export function Header() {
             format: [widthMm, heightMm]
         });
 
-        pdf.addImage(imgData, 'PNG', 0, 0, widthMm, heightMm);
+        pdf.addImage(imgData, 'PNG', marginMm, marginMm, contentWidthMm, contentHeightMm);
         pdf.save(`tabela-${new Date().getTime()}.pdf`);
     } catch (err) {
         console.error("Failed to generate PDF:", err);
