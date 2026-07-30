@@ -10,26 +10,36 @@ export function Header() {
   const [isRecentOpen, setIsRecentOpen] = useState(false);
   
   const handleDownloadPDF = async () => {
+    // Commit any content that is still being edited before cloning the table.
+    if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
+
     // Clear selection for a clean capture
     setSelectedCell(null);
     setSelectionRange(null);
     
-    // Wait for UI to update
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // Wait for React to paint the clean state and for Computer Modern/KaTeX
+    // fonts to be available before html2canvas measures the text.
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await document.fonts?.ready;
 
     const container = document.getElementById('interactive-table-container');
     if (!container) return;
 
     try {
         const MARGIN = 6; // Tightened margin
+        const CAPTURE_SCALE = 4;
 
         // High quality capture
         const canvas = await html2canvas(container, {
-            scale: 4, 
+            scale: CAPTURE_SCALE,
             useCORS: true,
             logging: false,
             backgroundColor: '#ffffff',
-            onclone: (clonedDoc) => {
+            onclone: async (clonedDoc) => {
+                await clonedDoc.fonts?.ready;
+
                 const clonedContainer = clonedDoc.getElementById('interactive-table-container');
                 if (clonedContainer) {
                     clonedContainer.style.position = 'relative';
@@ -63,17 +73,27 @@ export function Header() {
                             cell.style.overflow = 'visible';
                             
                             cell.style.display = 'table-cell';
-                            cell.style.verticalAlign = 'middle';
-                            cell.style.padding = '8px 4px';
-                            
-                            const innerDiv = cell.querySelector('div');
-                            if (innerDiv) {
-                                innerDiv.style.display = 'flex';
-                                innerDiv.style.flexDirection = 'column';
-                                innerDiv.style.justifyContent = 'center';
-                                innerDiv.style.height = 'auto';
-                                innerDiv.style.minHeight = '0';
-                            }
+                            cell.style.padding = '0';
+                        });
+
+                        // html2canvas-pro measures text word by word when letter-spacing
+                        // is exactly zero. With custom fonts and flex cell contents those
+                        // word ranges can lose the width of whitespace. A negligible,
+                        // non-zero value makes it measure graphemes and preserves spaces.
+                        const cellContents = table.querySelectorAll<HTMLElement>(
+                            'td > div > div, th > div > div'
+                        );
+                        cellContents.forEach(content => {
+                            content.style.letterSpacing = '0.01px';
+                        });
+
+                        // Resize hit areas are editor UI and must not affect the clone's
+                        // bounds or overlap cell contents in the exported image.
+                        const resizeHandles = table.querySelectorAll<HTMLElement>(
+                            '.cursor-col-resize, .cursor-row-resize'
+                        );
+                        resizeHandles.forEach(handle => {
+                            handle.style.display = 'none';
                         });
                     }
                 }
@@ -83,8 +103,8 @@ export function Header() {
         const imgData = canvas.toDataURL('image/png', 1.0);
         
         // Calculate dimensions in mm including the margin
-        const widthMm = (canvas.width / 4) * 0.264583; 
-        const heightMm = (canvas.height / 4) * 0.264583;
+        const widthMm = (canvas.width / CAPTURE_SCALE) * 0.264583; 
+        const heightMm = (canvas.height / CAPTURE_SCALE) * 0.264583;
 
         const pdf = new jsPDF({
             orientation: widthMm > heightMm ? 'landscape' : 'portrait',
